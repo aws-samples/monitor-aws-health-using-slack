@@ -1,0 +1,98 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploys an AWS Chatbot that notifies users in Slack of AWS Health notifications
+ 
+#==================================================
+# Parameters
+#==================================================
+Parameters:
+  SlackWorkSpaceID:
+    Description: Slack workspace ID (Copy and Paste from AWS Chatbot Configured Clients Interface)
+    Type: String
+    MinLength: 9
+    MaxLength: 15
+    AllowedPattern: ^[a-zA-Z0-9_]*$
+    ConstraintDescription: |
+      Malformed Input Parameter: Environment must contain only upper and numbers. Length should be minimum of 9 characters and a maximum of 15 characters.
+ 
+  SlackChannelID:
+    Description: Slack Channel ID
+    Type: String
+    MinLength: 9
+    MaxLength: 15
+    AllowedPattern: ^[a-zA-Z0-9_]*$
+    ConstraintDescription: |
+      Malformed Input Parameter: Environment must contain only upper and numbers. Length should be a minimum of 9 characters and a maximum of 15 characters.
+  
+#==================================================
+# Resources
+#==================================================
+Resources: 
+  #======================================================
+  # SNS Topic
+  #======================================================         
+  AWSHealthTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: AWSHealthTopic
+  EventTopicPolicy:
+      Type: AWS::SNS::TopicPolicy
+      Properties:
+        PolicyDocument:
+          Id: AWSHealthTopicPolicy
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: events.amazonaws.com
+              Action: 'sns:Publish'
+              Resource: !Ref AWSHealthTopic
+        Topics:
+          - !Ref AWSHealthTopic  
+  #======================================================
+  # EventBridge Rule
+  #====================================================== 
+  EventBridgeHealthRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Sends all AWS Health notifications to the SNS topic
+      EventPattern:
+        source:
+          - aws.health
+      Name: AWSHealthNotificationRule
+      State: ENABLED
+      Targets: 
+        - 
+          Arn: 
+            !Ref AWSHealthTopic
+          Id: HealthTopic
+  #======================================================
+  # IAM Role for Chatbot
+  #====================================================== 
+  ChatBotManageIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "sns.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+  #======================================================
+  # Chatbot Configuration for Slack
+  #====================================================== 
+  SlackChannelConfig:
+    Type: AWS::Chatbot::SlackChannelConfiguration
+    Properties: 
+      ConfigurationName: aws-health-slack
+      IamRoleArn: !GetAtt ChatBotManageIAMRole.Arn
+      LoggingLevel: ERROR
+      SlackChannelId: !Ref SlackChannelID
+      SlackWorkspaceId: !Ref SlackWorkSpaceID
+      SnsTopicArns: 
+        - !Ref  AWSHealthTopic  
